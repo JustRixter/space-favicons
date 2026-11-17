@@ -1,6 +1,7 @@
 {
   "place": "none",
   "title": "Space favicons",
+  "version": "0.2.0",
   "cloned_from": {
     "name": "spaces",
     "version": "0.1.11"
