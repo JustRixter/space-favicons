@@ -81,7 +81,7 @@ export const copyExt = (file) => (extOf(file) === "ico" ? "png" : extOf(file));
 // The copy's path relative to the app folder, from the checksum COPY_SCRIPT printed.
 export const copyPath = (sum, file) => `${AUTO_DIR}/${sum}.${copyExt(file)}`;
 
-// Shell, run in the checkout: $1 destination folder. The picture the remote host shows
+// Shell, run in the checkout (or anywhere, when $2 is the remote URL, for a checkout on another machine): $1 destination folder. The picture the remote host shows
 // for the project, from `origin` (else the first remote): on GitHub the owner's avatar (github.com/<owner>.png);
 // on GitLab (gitlab.com or any host with "gitlab" in its name) the project's avatar, else
 // its group's, from the public API; likewise Bitbucket (repository avatar), Codeberg and
@@ -90,10 +90,13 @@ export const copyPath = (sum, file) => `${AUTO_DIR}/${sum}.${copyExt(file)}`;
 // Saved as gh-<owner>.<ext> or rp-<checksum>.<ext>; prints that file name. Kept for a week, then fetched again (the old one stays if that
 // fails). Prints nothing and fails for other hosts, private projects, or no network.
 export const REMOTE_SCRIPT = `
-remote=origin
-git remote get-url origin >/dev/null 2>&1 || remote=$(git remote 2>/dev/null | head -1)
-[ -n "$remote" ] || exit 1
-url=$(git remote get-url "$remote" 2>/dev/null) || exit 1
+url=$2
+if [ -z "$url" ]; then
+  remote=origin
+  git remote get-url origin >/dev/null 2>&1 || remote=$(git remote 2>/dev/null | head -1)
+  [ -n "$remote" ] || exit 1
+  url=$(git remote get-url "$remote" 2>/dev/null) || exit 1
+fi
 rest=$(printf '%s' "$url" | sed -E 's#^(https?|ssh|git)://([^@/]+@)?##; s#^[^@/]+@##; s#^([^/:]+):([0-9]+/)#\\1/#; s#^([^/:]+):#\\1/#')
 host=\${rest%%/*}; path=\${rest#*/}; path=\${path%.git}; path=\${path%/}
 [ -n "$host" ] && [ "$path" != "$rest" ] && [ -n "$path" ] || exit 1
@@ -131,4 +134,29 @@ case $(file -b --mime-type "$tmp") in
 esac
 rm -f "$out".png "$out".jpg "$out".gif "$out".webp
 mv "$tmp" "$out.$ext" && echo "$key.$ext"
+`;
+
+// Shell, run on the machine that has the file: $1 the file. Prints it as one line of
+// base64, or fails when it is missing or too big to pass on as an argument (90 KB).
+export const READ_SCRIPT = `
+[ -f "$1" ] && [ "$(wc -c < "$1")" -le 90000 ] || exit 1
+base64 < "$1" | tr -d '\\n '
+`;
+
+// Shell, run here: $1 the base64 a READ_SCRIPT printed, $2 destination folder, $3 the copy's extension, $4 "ico" to convert it to PNG.
+// Same result as COPY_SCRIPT: the copy is named by checksum, an .ico becomes a PNG.
+export const STORE_SCRIPT = `
+mkdir -p "$2" || exit 1
+tmp="$2/.in.$$"
+{ printf '%s' "$1" | base64 -d 2>/dev/null || printf '%s' "$1" | base64 -D; } > "$tmp" 2>/dev/null
+[ -s "$tmp" ] || { rm -f "$tmp"; exit 1; }
+sum=$(cksum < "$tmp" | tr ' ' '-'); out="$2/$sum.\${3}"
+if [ ! -s "$out" ]; then
+  case "$4" in
+    ico) sips -s format png "$tmp" --out "$out" >/dev/null 2>&1 || { rm -f "$tmp" "$out"; exit 1; } ;;
+    *) cp -- "$tmp" "$out" ;;
+  esac
+fi
+rm -f "$tmp"
+echo "$sum"
 `;

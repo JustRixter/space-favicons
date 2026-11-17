@@ -54,7 +54,7 @@ Read this before installing.
 
 - Every repo under the same GitHub owner shows the same picture, because GitHub has no per-repo image.
 - SourceHut, Azure DevOps and self-hosted servers without `gitlab`, `gitea`, `forgejo`, `bitbucket` or `gitee` in the hostname have no avatar to ask for. Private projects can't be asked either. These show the letter tile.
-- Spaces on another machine only get the letter tile, because their files aren't copied.
+- On another machine the favicon is read there (up to 90 KB) and copied here, so that machine needs `sh`, `git`, `grep`, `find`, `base64` and `wc`. The host picture is fetched from this computer, using the remote checkout's `origin` URL.
 - On Windows the favicon and host steps are skipped.
 
 ## License

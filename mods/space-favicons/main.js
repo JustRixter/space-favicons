@@ -16,7 +16,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, appHome, props } from "herdr";
 import { SHARED_KEY, parseIconListing, resolveIcon } from "./avatars.js";
 import { MOD } from "./files.js";
-import { FIND_SCRIPT, COPY_SCRIPT, REMOTE_SCRIPT, AUTO_DIR, pickFavicon, copyExt, copyPath } from "./autoicon.js";
+import { FIND_SCRIPT, COPY_SCRIPT, REMOTE_SCRIPT, READ_SCRIPT, STORE_SCRIPT, AUTO_DIR, pickFavicon, copyExt, copyPath } from "./autoicon.js";
 import { SpaceMenu } from "./menu.js";
 import { PickIcon } from "./pick.js";
 
@@ -165,7 +165,7 @@ class Spaces extends View {
     const [on, cwd] = JSON.parse(key);
     this.checked[key] = Date.now();
     this.unsure.delete(key);
-    if (!on) await this.findIcon(key, cwd, cx);
+    await this.findIcon(key, on, cwd, cx);
     try {
       // No optional locks: a status that touched the index would wake the watch again.
       // Writes nothing under .git (index lock, fsmonitor cookie): watch() would wake on it.
@@ -200,23 +200,40 @@ class Spaces extends View {
   }
 
   // A favicon in the place's checkout, copied under the app folder (image() reads only
-  // there). Local places only: another machine's files aren't ours to copy. Any trouble:
+  // there); on another machine the file is read there and stored here. Any trouble:
   // no favicon, and the row shows the letter.
-  async findIcon(key, cwd, cx) {
+  async findIcon(key, on, cwd, cx) {
     const mac = window().platform === "macos";
     if (window().platform === "windows" || !cwd) return;
     try {
-      const found = await exec("sh", ["-c", FIND_SCRIPT], { cwd });
+      // On another machine the search and the read run there; the bytes come back as
+      // base64 and are stored here. An .ico needs sips here, so it's skipped without it.
+      const far = on ? { cwd, on } : { cwd };
+      const found = await exec("sh", ["-c", FIND_SCRIPT], far);
       const best = found.code === 0 ? pickFavicon(found.stdout, mac) : null;
       let rel = "";
       if (best) {
         const src = `${best.root}/${best.file}`;
-        const copied = await exec("sh", ["-c", COPY_SCRIPT, "_", src, `${appHome()}/${AUTO_DIR}`, copyExt(best.file)]);
-        if (copied.code === 0) rel = copyPath(copied.stdout.trim(), best.file);
+        const dest = `${appHome()}/${AUTO_DIR}`;
+        let copied = null;
+        if (on) {
+          const b64 = await exec("sh", ["-c", READ_SCRIPT, "_", src], far);
+          if (b64.code === 0 && b64.stdout.trim()) copied = await exec("sh", ["-c", STORE_SCRIPT, "_", b64.stdout.trim(), dest, copyExt(best.file), /\.ico$/i.test(best.file) ? "ico" : "-"]);
+        } else {
+          copied = await exec("sh", ["-c", COPY_SCRIPT, "_", src, dest, copyExt(best.file)]);
+        }
+        if (copied?.code === 0) rel = copyPath(copied.stdout.trim(), best.file);
       }
       if (!rel) {
-        // No favicon: the picture GitHub or GitLab shows for the project.
-        const gh = await exec("sh", ["-c", REMOTE_SCRIPT, "_", `${appHome()}/${AUTO_DIR}`], { cwd });
+        // No favicon: the picture GitHub or GitLab shows for the project. A remote
+        // checkout gives its URL; the request is made from here.
+        let url = "";
+        if (on) {
+          const u = await exec("sh", ["-c", "git remote get-url origin 2>/dev/null || git remote get-url \"$(git remote | head -1)\" 2>/dev/null"], far);
+          url = u.code === 0 ? u.stdout.trim() : "";
+          if (!url) { if (this.auto[key] !== "") { this.auto[key] = ""; cx.notify(); } return; }
+        }
+        const gh = await exec("sh", ["-c", REMOTE_SCRIPT, "_", `${appHome()}/${AUTO_DIR}`, url], on ? {} : { cwd });
         if (gh.code === 0 && gh.stdout.trim()) rel = `${AUTO_DIR}/${gh.stdout.trim()}`;
       }
       if (this.auto[key] !== rel) {
