@@ -22,11 +22,11 @@ The Spaces list as in the shipped `spaces` mod: stable colored avatars, worktree
 - Matching names: `favicon*`, `icon.<ext>`, `apple-touch-icon*` with svg, png, ico, webp, jpg, jpeg or gif. Ranking: fewer folders deep first, then `favicon.<ext>` before `favicon-32x32.png` before `icon.<ext>` before `apple-touch-icon*`, then svg, png, webp, jpg, gif, ico, then the shorter path.
 - An `.ico` is converted to PNG with macOS `sips`; elsewhere `.ico` is ignored.
 - SourceHut, Azure DevOps and self-hosted hosts whose name lacks `gitlab`, `gitea`, `forgejo`, `bitbucket` or `gitee` have no avatar to ask for, and private projects can't be asked: they show the letter. A fetched picture is kept for a week, then fetched again.
-- Spaces on another machine never get a favicon or a host picture (their files are not copied); they show the letter. On Windows the favicon and host steps are skipped.
+- Spaces on another machine work too: `FIND_SCRIPT` and `READ_SCRIPT` (favicon as base64, at most 90 KB) run there with `exec(..., {cwd, on})`, `STORE_SCRIPT` saves it here; the host picture is fetched locally from the remote checkout's `origin` URL (`REMOTE_SCRIPT`'s `$2`). On Windows the favicon and host steps are skipped.
 
 ## Built from
 
-- `mods/space-favicons/main.js`: a copy of Herdr's `spaces` mod (0.1.11) whose default export draws the sidebar, or the menu or dialog when `props().view` is `"menu"` / `"pick"`. Its `findIcon(key, cwd, cx)` runs from `check()` for local places only and fills `this.auto[where()]`; `row()` uses `resolveIcon(...) ?? auto`.
+- `mods/space-favicons/main.js`: a copy of Herdr's `spaces` mod (0.1.11) whose default export draws the sidebar, or the menu or dialog when `props().view` is `"menu"` / `"pick"`. Its `findIcon(key, on, cwd, cx)` runs from `check()` for every place and fills `this.auto[where()]`; `row()` uses `resolveIcon(...) ?? auto`.
 - `autoicon.js`: `FIND_SCRIPT`, `COPY_SCRIPT`, `REMOTE_SCRIPT` (run with `exec("sh", ["-c", script, "_", ...args])`) and `pickFavicon`, `copyExt`, `copyPath`.
 - `avatars.js`, `files.js`, `menu.js`, `pick.js`: the Set icon… menu and dialog; picked images are copied to `data/space-favicons/` and mapped in `shared("space-favicons.icons")`.
 - `image.svg`: the menu icon.
